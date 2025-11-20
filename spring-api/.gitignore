@@ -3,3 +3,5 @@
 *.iml
 .mvn/
 .DS_Store
+.env
+docker-compose.override.yml
