@@ -11,8 +11,26 @@ Services Docker (réseau `app-net`) :
 
 Schéma (simplifié):
 
-client ⇄ (80/4200) proxy ⇄ webapp (nginx)
-											└────→ api:8080 ⇄ db:5432
+### Architecture de production
+```mermaid
+graph TD;
+    Utilisateur-->Reverse-Proxy;
+    Reverse-Proxy-->|/*|Frontend;
+    Reverse-Proxy-->|/api/*|Backend;
+    Backend-->Database;
+    Frontend-->Backend;
+```
+
+### Architecture de développement
+```mermaid
+graph TD;
+    Dev[Utilisateur]-->|:5173|Frontend;
+    Dev-->|:8080|Backend;
+    Dev-->Proxy[Reverse Proxy];
+    Proxy-->|:80|Frontend;
+    Backend-->|:5432|Database;
+    Frontend-->Backend
+```
 
 ## 2. Commandes pour builder et lancer
 
@@ -68,8 +86,9 @@ curl -X POST http://localhost:4200/api/items -H "Content-Type: application/json"
 	- Choix: en dev, on expose à la fois `80:80` et `4200:80` sur le `proxy` pour le confort. En prod-like, seul `80:80` est exposé.
 - Accès DB depuis l’hôte en dev.
 	- Ajout dans l’override: `db` publie `5432:5432`. Connexion: `localhost:5432` avec les variables `POSTGRES_*`.
-
-## 5. Choix techniques effectués avec la raison
+- Rédacrion du Dockerfile front multi-stage pour builder l'application React avec Node.js puis servir les fichiers statiques avec Nginx.
+	- Apres quelques essais, le dockerfile a été amelioré afin qu'il soit fonctionnel et optimisé grace a la separation des phases build et runtime, avec la partie node et la partie nginx.
+## 5. Choix techniques effectués
 
 - Reverse proxy Nginx devant le front et l’API: une seule origine côté navigateur; pas de CORS; URLs simples (`/` et `/api`).
 - Front servi statiquement par Nginx (build Vite) pour des déploiements simples et rapides.
