@@ -40,37 +40,9 @@ Rebuilder uniquement l'image backend si nécessaire :
 docker compose build api
 ```
 
-### Frontend (mode développement)
 
-```powershell
-cd webapp
-npm install
-npm run dev   # lance Vite sur http://localhost:5173
-```
 
-### Build frontend (production statique)
-
-```powershell
-cd webapp
-npm run build  # génère dist/
-```
-
-Déploiement nginx (exemple de Dockerfile si besoin) :
-
-```Dockerfile
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY dist /usr/share/nginx/html
-```
-
-Build & run (exemple) :
-
-```powershell
-docker build -t webapp:1.0 webapp
-docker run -d -p 80:80 webapp:1.0
-```
-
-## 3. Endpoints API & URL frontend
+## 3. Endpoints API
 
 Port backend par défaut : `8080` (configurable via `HOST_PORT` dans `.env`).
 
@@ -82,41 +54,25 @@ Port backend par défaut : `8080` (configurable via `HOST_PORT` dans `.env`).
 
 Réponse `POST /api/items` : l'item créé (JSON).
 
-URL frontend dev : `http://localhost:5173`.
 
-Pour configurer l'URL de l'API côté frontend, créer un fichier `.env` dans `webapp` si nécessaire :
-
-```bash
-VITE_API_BASE_URL=http://localhost:8080
-```
 
 ## 4. Problèmes rencontrés & solutions
 
-| Problème | Cause | Solution appliquée |
-|----------|-------|--------------------|
-| Communication API ↔ DB en conteneurs | Hostname incorrect | Utilisation du nom de service `db` dans `SPRING_DATASOURCE_URL` (`jdbc:postgresql://db:5432/db`). |
-| CORS entre frontend (5173) et backend (8080) | Navigateur bloque requêtes cross-origin | Ajout de `@CrossOrigin(origins = "*")` dans les controllers Spring. |
-| Persistance des données | Données perdues après `docker compose down` | Volume nommé `pgdata` monté sur `/var/lib/postgresql/data`. |
-| Configuration des credentials | Dur codage risqué | Centralisation dans le fichier `.env` consommé par Compose. |
-| Évolution du schéma | Changements de modèle JPA | `spring.jpa.hibernate.ddl-auto=update` pour simplifier en développement (à remplacer par migrations en prod). |
-| Port conflit local | Port 8080 occupé | Variable `HOST_PORT` pour remapper (`HOST_PORT=8090` par ex.). |
 
-Vous pouvez compléter / ajuster cette table avec les problèmes réellement rencontrés.
 
 ## 5. Choix techniques & raisons
 
-| Choix | Raison |
-|-------|-------|
-| PostgreSQL | Base relationnelle robuste, image officielle légère (`alpine`). |
-| Spring Boot | Rapidité de développement REST, intégration JPA/Hibernate, simplicité de config. |
-| JPA/Hibernate | Gestion ORM et génération de schéma automatique en dev. |
-| Docker Compose | Orchestration locale simple multi-services, isolation et reproductibilité. |
-| Variables d'environnement (.env) | Séparation configuration / code, facilité de changement sans rebuild. |
-| React + Vite | Démarrage rapide, HMR performant, build optimisé. |
-| Nginx pour statique | Serveur léger, configuration simple pour SPA (fallback vers `index.html`). |
-| `@CrossOrigin(*)` | Rapidité de prototypage; à restreindre en production pour sécurité. |
-| Volume Postgres | Persistance des données entre redémarrages. |
-| `ddl-auto=update` (dev) | Simplifier itérations modèle; à remplacer par Flyway ou Liquibase en production. |
+Uniquement côté Docker du backend :
+
+- Multi-stage Dockerfile: utilisation de `maven:3.9.9-eclipse-temurin-23-alpine` pour builder puis `eclipse-temurin:23-jre-alpine` pour exécuter. Réduit la taille finale et sépare build/runtime pour plus de sécurité.
+- Caching Maven: copie de `pom.xml` avant `src/` afin de réutiliser le cache des dépendances entre builds quand le code change peu.
+- Build sans tests dans l'image: `-DskipTests` pour accélérer le build d'image; les tests se lancent hors image.
+- Lancement simple: `CMD ["java", "-jar", "app.jar"]` avec `EXPOSE 8080` pour documenter le port interne.
+- Configuration par variables d'environnement: l'image ne contient pas de secrets; `SPRING_DATASOURCE_*` sont injectées via Compose.
+- Orchestration Compose: service `api` dépend de `db` (`depends_on`), port publié configurable via `HOST_PORT`, et `restart: unless-stopped` pour la résilience locale.
+- Tag d'image explicite `backend:1.0`: facilite l'identification et le versionnement local.
+
+
 
 ## 6. Variables d'environnement principales (`spring-api/.env`)
 
@@ -132,7 +88,7 @@ Vous pouvez compléter / ajuster cette table avec les problèmes réellement ren
 
 ## 7. Données initiales
 
-Le fichier `data.sql` (si rempli) est exécuté au démarrage pour insérer des données dans la base. (Compléter selon vos besoins.)
+Le fichier `data.sql` (si rempli) est exécuté au démarrage pour insérer des données dans la base.
 
 ## 8. Tests rapides des endpoints
 
@@ -141,14 +97,3 @@ curl http://localhost:8080/api/health
 curl http://localhost:8080/api/items
 curl -X POST http://localhost:8080/api/items -H "Content-Type: application/json" -d '{"name":"Test"}'
 ```
-
-## 9. Améliorations possibles
-
-- Ajouter un Dockerfile frontend automatisé (exemple fourni).
-- Restreindre CORS aux origines autorisées.
-- Ajouter Flyway / Liquibase pour la gestion des migrations.
-- Mettre en place des tests unitaires et d'intégration (JUnit / Testcontainers).
-- Ajouter une CI (GitHub Actions) pour build et tests.
-
----
-Complétez les sections Problèmes & Données initiales si d'autres points spécifiques ont été rencontrés.
