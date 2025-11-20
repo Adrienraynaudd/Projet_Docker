@@ -1,99 +1,108 @@
-# Projet Docker
+# Projet Docker (Full stack)
 
 ## 1. Architecture globale
 
-Le projet est composé de trois parties principales :
+Services Docker (réseau `app-net`) :
 
-1. Base de données `PostgreSQL` (service `db` dans `docker-compose.yml`).
-2. API REST `Spring Boot` (service `api`) exposant des endpoints pour gérer des items et vérifier la santé du système.
-3. Frontend `React + Vite` (dossier `webapp`) consommant l'API. En développement il tourne via le serveur Vite (port 5173). Une configuration Nginx (`webapp/nginx.conf`) est fournie pour un déploiement statique.
+- `db` — Postgres 18 (volume `pgdata` pour la persistance)
+- `api` — Spring Boot (port interne 8080)
+- `webapp` — React construit par Vite, servi par Nginx
+- `proxy` — Nginx reverse-proxy qui sert le front sur `/` et route l'API sur `/api/*` → `api:8080`
 
-Réseau interne : l'API communique avec Postgres via le nom de service Docker `db`. La persistance des données est assurée par un volume Docker `pgdata`.
+Schéma (simplifié):
+
+client ⇄ (80/4200) proxy ⇄ webapp (nginx)
+											└────→ api:8080 ⇄ db:5432
 
 ## 2. Commandes pour builder et lancer
 
-### Backend + Base de données
+En PowerShell, à la racine du repo.
 
-Se placer dans le dossier `spring-api` (là où se trouve `docker-compose.yml`).
-
+- Dev (avec override: publie aussi 4200 et 5432) :
 ```powershell
-cd spring-api
-docker compose --env-file .env up -d --build
+docker-compose up --build -d
+```
+- Prod-like (sans override: seulement 80 exposé) :
+```powershell
+docker-compose -f docker-compose.yml up --build -d
+```
+- Arrêt :
+```powershell
+docker-compose down
+```
+- Logs utiles :
+```powershell
+docker-compose logs -f proxy
+docker-compose logs -f api
+docker-compose logs -f db
 ```
 
-Arrêter et supprimer les conteneurs :
+## 3. Endpoints API + URL frontend
 
+- Frontend (dev): `http://localhost:4200`
+- Frontend (prod-like): `http://localhost`
+- API via proxy: `http://localhost/api/*`
+- API directe (dev): `http://localhost:8080/api/*`
+
+Endpoints fournis par l’API:
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| GET | `/api/health` | Statut de l’API (`{"status":"ok"}`) |
+| GET | `/api/items` | Liste des items |
+| POST | `/api/items` | Crée un item. Corps: `{ "name": "<string>" }` |
+
+Exemples rapides:
 ```powershell
-docker compose down
-```
-
-Voir les logs :
-
-```powershell
-docker compose logs -f api
-docker compose logs -f db
-```
-
-Rebuilder uniquement l'image backend si nécessaire :
-
-```powershell
-docker compose build api
-```
-
-
-
-## 3. Endpoints API
-
-Port backend par défaut : `8080` (configurable via `HOST_PORT` dans `.env`).
-
-| Méthode | Endpoint | Description | Corps attendu |
-|---------|----------|-------------|---------------|
-| GET | `/api/health` | Vérifie la santé de l'API | - |
-| GET | `/api/items` | Liste tous les items | - |
-| POST | `/api/items` | Crée un nouvel item | `{"name": "<string>"}` |
-
-Réponse `POST /api/items` : l'item créé (JSON).
-
-
-
-## 4. Problèmes rencontrés & solutions
-
-
-
-## 5. Choix techniques & raisons
-
-Uniquement côté Docker du backend :
-
-- Multi-stage Dockerfile: utilisation de `maven:3.9.9-eclipse-temurin-23-alpine` pour builder puis `eclipse-temurin:23-jre-alpine` pour exécuter. Réduit la taille finale et sépare build/runtime pour plus de sécurité.
-- Caching Maven: copie de `pom.xml` avant `src/` afin de réutiliser le cache des dépendances entre builds quand le code change peu.
-- Build sans tests dans l'image: `-DskipTests` pour accélérer le build d'image; les tests se lancent hors image.
-- Lancement simple: `CMD ["java", "-jar", "app.jar"]` avec `EXPOSE 8080` pour documenter le port interne.
-- Configuration par variables d'environnement: l'image ne contient pas de secrets; `SPRING_DATASOURCE_*` sont injectées via Compose.
-- Orchestration Compose: service `api` dépend de `db` (`depends_on`), port publié configurable via `HOST_PORT`, et `restart: unless-stopped` pour la résilience locale.
-- Tag d'image explicite `backend:1.0`: facilite l'identification et le versionnement local.
-
-
-
-## 6. Variables d'environnement principales (`spring-api/.env`)
-
-| Variable | Description | Exemple |
-|----------|------------|---------|
-| `POSTGRES_USER` | Utilisateur DB | `user` |
-| `POSTGRES_PASSWORD` | Mot de passe DB | `password` |
-| `POSTGRES_DB` | Nom base | `db` |
-| `SPRING_DATASOURCE_URL` | URL JDBC | `jdbc:postgresql://db:5432/db` |
-| `SPRING_DATASOURCE_USERNAME` | User JDBC | `user` |
-| `SPRING_DATASOURCE_PASSWORD` | Password JDBC | `password` |
-| `HOST_PORT` | Port publié pour l'API | `8080` |
-
-## 7. Données initiales
-
-Le fichier `data.sql` (si rempli) est exécuté au démarrage pour insérer des données dans la base.
-
-## 8. Tests rapides des endpoints
-
-```powershell
+curl http://localhost:4200/api/health
 curl http://localhost:8080/api/health
-curl http://localhost:8080/api/items
-curl -X POST http://localhost:8080/api/items -H "Content-Type: application/json" -d '{"name":"Test"}'
+curl -X POST http://localhost:4200/api/items -H "Content-Type: application/json" -d '{"name":"Demo"}'
+```
+
+## 4. Problèmes rencontrés et solutions
+
+- Front en 4200 ne “voyait” pas l’API → les requêtes partaient en `/api/api/*` (doublon).
+	- Cause: le code front construit `API_BASE + "/api/..."` et `API_BASE` valait déjà `/api`.
+	- Solution: en dev, on build le front avec `VITE_API_BASE_URL = .` (valeur relative). Les fetch deviennent `./api/...` → le proxy les résout en `/api/...` sans doublon.
+- Différence dev/prod peu claire (deux URLs qui marchent).
+	- Choix: en dev, on expose à la fois `80:80` et `4200:80` sur le `proxy` pour le confort. En prod-like, seul `80:80` est exposé.
+- Accès DB depuis l’hôte en dev.
+	- Ajout dans l’override: `db` publie `5432:5432`. Connexion: `localhost:5432` avec les variables `POSTGRES_*`.
+
+## 5. Choix techniques effectués avec la raison
+
+- Reverse proxy Nginx devant le front et l’API: une seule origine côté navigateur; pas de CORS; URLs simples (`/` et `/api`).
+- Front servi statiquement par Nginx (build Vite) pour des déploiements simples et rapides.
+- `VITE_API_BASE_URL='.'` au build: évite le couplage à des URLs absolues; compatible dev/prod sans changer le code.
+- Healthchecks:
+	- `api` a un healthcheck sur `/api/health` avec `start_period` pour laisser démarrer Spring.
+	- `proxy` et `webapp` ont un healthcheck simple. Non obligatoire, mais pratique pour `depends_on: condition: service_healthy`.
+- Compose override pour le “mode dev”:
+	- Publie `4200:80` (en plus de `80:80`) et `5432:5432`.
+	- N’ouvre pas la DB en prod-like (sécurité).
+- Images taguées `backend:1.0` et `frontend:1.0` pour lisibilité locale.
+
+## 6. Variables d’environnement principales
+
+| Variable | Où | Description |
+|----------|----|-------------|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `db` | Identifiants Postgres |
+| `SPRING_DATASOURCE_URL` | `api` | `jdbc:postgresql://db:5432/<DB>` |
+| `SPRING_DATASOURCE_USERNAME` | `api` | Utilisateur DB |
+| `SPRING_DATASOURCE_PASSWORD` | `api` | Mot de passe DB |
+| `VITE_API_BASE_URL` | `webapp` | Valeur `.` en dev; proxifié en `/api` par Nginx |
+
+## 7. Tests rapides (copier/coller)
+
+```powershell
+# Front
+start http://localhost:4200
+start http://localhost
+
+# API via proxy et directe
+curl http://localhost:4200/api/health
+curl http://localhost:8080/api/health
+
+# DB (psql)
+psql -h localhost -p 5432 -U $env:POSTGRES_USER -d $env:POSTGRES_DB
 ```
