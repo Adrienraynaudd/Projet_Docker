@@ -36,7 +36,7 @@ graph TD;
 
 En PowerShell, à la racine du repo.
 
-- Dev (avec override: publie aussi 4200 et 5432) :
+- Dev (avec override: publie aussi 5173 et 5432) :
 ```powershell
 docker-compose up --build -d
 ```
@@ -57,7 +57,7 @@ docker-compose logs -f db
 
 ## 3. Endpoints API + URL frontend
 
-- Frontend (dev): `http://localhost:4200`
+- Frontend (dev): `http://localhost:5173`
 - Frontend (prod-like): `http://localhost`
 - API via proxy: `http://localhost/api/*`
 - API directe (dev): `http://localhost:8080/api/*`
@@ -72,18 +72,18 @@ Endpoints fournis par l’API:
 
 Exemples rapides:
 ```powershell
-curl http://localhost:4200/api/health
+curl http://localhost:5173/api/health
 curl http://localhost:8080/api/health
-curl -X POST http://localhost:4200/api/items -H "Content-Type: application/json" -d '{"name":"Demo"}'
+curl -X POST http://localhost:5173/api/items -H "Content-Type: application/json" -d '{"name":"Demo"}'
 ```
 
 ## 4. Problèmes rencontrés et solutions
 
-- Front en 4200 ne “voyait” pas l’API → les requêtes partaient en `/api/api/*` (doublon).
+- Front en 5173 ne “voyait” pas l’API → les requêtes partaient en `/api/api/*` (doublon).
 	- Cause: le code front construit `API_BASE + "/api/..."` et `API_BASE` valait déjà `/api`.
 	- Solution: en dev, on build le front avec `VITE_API_BASE_URL = .` (valeur relative). Les fetch deviennent `./api/...` → le proxy les résout en `/api/...` sans doublon.
 - Différence dev/prod peu claire (deux URLs qui marchent).
-	- Choix: en dev, on expose à la fois `80:80` et `4200:80` sur le `proxy` pour le confort. En prod-like, seul `80:80` est exposé.
+	- Choix: en dev, on expose à la fois `80:80` et `5173:80` sur le `proxy` pour le confort. En prod-like, seul `80:80` est exposé.
 - Accès DB depuis l’hôte en dev.
 	- Ajout dans l’override: `db` publie `5432:5432`. Connexion: `localhost:5432` avec les variables `POSTGRES_*`.
 - Rédacrion du Dockerfile front multi-stage pour builder l'application React avec Node.js puis servir les fichiers statiques avec Nginx.
@@ -97,7 +97,7 @@ curl -X POST http://localhost:4200/api/items -H "Content-Type: application/json"
 	- `api` a un healthcheck sur `/api/health` avec `start_period` pour laisser démarrer Spring.
 	- `proxy` et `webapp` ont un healthcheck simple. Non obligatoire, mais pratique pour `depends_on: condition: service_healthy`.
 - Compose override pour le “mode dev”:
-	- Publie `4200:80` (en plus de `80:80`) et `5432:5432`.
+	- Publie `5173:80` (en plus de `80:80`) et `5432:5432`.
 	- N’ouvre pas la DB en prod-like (sécurité).
 - Images taguées `backend:1.0` et `frontend:1.0` pour lisibilité locale.
 
@@ -115,11 +115,11 @@ curl -X POST http://localhost:4200/api/items -H "Content-Type: application/json"
 
 ```powershell
 # Front
-start http://localhost:4200
+start http://localhost:5173
 start http://localhost
 
 # API via proxy et directe
-curl http://localhost:4200/api/health
+curl http://localhost:5173/api/health
 curl http://localhost:8080/api/health
 
 # DB (psql)
