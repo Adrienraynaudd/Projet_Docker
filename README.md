@@ -10,15 +10,29 @@ Le projet est composé de trois parties principales :
 
 Le front et le back sont retourné via un reverse proxy `NGinx` (service `nginx`) qui redirige les requêtes vers l'API ou le frontend selon le chemin.
 
-Diagramme d'architecture :<br>
-Utilisateur --> NGinx Reverse Proxy<br>
-NGinx Reverse Proxy --> /api/* --> Backend Spring Boot<br>
-NGinx Reverse Proxy --> /* --> Frontend React + Vite<br>
-Backend Spring Boot --> PostgreSQL Database<br>
-
 Réseau interne : <br>
 L'API communique avec Postgres via le nom de service Docker `db`. La persistance des données est assurée par un volume Docker `pgdata`.
 
+### Architecture de production
+```mermaid
+graph TD;
+    Utilisateur-->Reverse-Proxy;
+    Reverse-Proxy-->|/*|Frontend;
+    Reverse-Proxy-->|/api/*|Backend;
+    Backend-->Database;
+    Frontend-->Backend;
+```
+
+### Architecture de développement
+```mermaid
+graph TD;
+    Dev[Utilisateur]-->|:5173|Frontend;
+    Dev-->|:8080|Backend;
+    Dev-->Proxy[Reverse Proxy];
+    Proxy-->|:80|Frontend;
+    Backend-->|:5432|Database;
+    Frontend-->Backend
+```
 ## 2. Commandes pour builder et lancer
 
 Se placer à la racine (là où se trouve `docker-compose.yml`).
