@@ -8,14 +8,29 @@ Le projet est composé de trois parties principales :
 2. API REST `Spring Boot` (service `api`) exposant des endpoints pour gérer des items et vérifier la santé du système.
 3. Frontend `React + Vite` (dossier `webapp`) consommant l'API. En développement il tourne via le serveur Vite (port 5173). Une configuration Nginx (`webapp/nginx.conf`) est fournie pour un déploiement statique.
 
-Réseau interne : l'API communique avec Postgres via le nom de service Docker `db`. La persistance des données est assurée par un volume Docker `pgdata`.
+Le front et le back sont retourné via un reverse proxy `NGinx` (service `nginx`) qui redirige les requêtes vers l'API ou le frontend selon le chemin.
+
+Diagramme d'architecture :<br>
+Utilisateur --> NGinx Reverse Proxy<br>
+NGinx Reverse Proxy --> /api/* --> Backend Spring Boot<br>
+NGinx Reverse Proxy --> /* --> Frontend React + Vite<br>
+Backend Spring Boot --> PostgreSQL Database<br>
+
+Réseau interne : <br>
+L'API communique avec Postgres via le nom de service Docker `db`. La persistance des données est assurée par un volume Docker `pgdata`.
 
 ## 2. Commandes pour builder et lancer
 
 Se placer à la racine (là où se trouve `docker-compose.yml`).
 
+Commande pour lancer en developpement :
 ```powershell
-docker compose --env-file .env up -d --build
+docker compose up -d --build
+```
+
+Commande pour lancer en production :
+```powershell
+docker-compose -f docker-compose.yml up --build -d
 ```
 
 Arrêter et supprimer les conteneurs :
@@ -41,8 +56,7 @@ docker compose build api
 
 ## 3. Endpoints API
 
-Port backend par défaut : `8080` (configurable via `HOST_PORT` dans `.env`).
-
+Back :
 | Méthode | Endpoint | Description | Corps attendu |
 |---------|----------|-------------|---------------|
 | GET | `/api/health` | Vérifie la santé de l'API | - |
@@ -51,23 +65,20 @@ Port backend par défaut : `8080` (configurable via `HOST_PORT` dans `.env`).
 
 Réponse `POST /api/items` : l'item créé (JSON).
 
-## 4. Architecture Globale
-```mermaid
-graph TD;
-    A[Utilisateur] --> NGinx Reverse Proxy;
-    NGinx Reverse Proxy --> |/api/*| C[Backend Spring Boot];
-    NGinx Reverse Proxy --> |/*| D[Frontend React + Vite];
-```
-
-
+Front : accessible via le reverse proxy Nginx à la racine `/`.
 
 ## 4. Problèmes rencontrés & solutions
 
+Au cours du projet nous avons rencontré plusieurs défis techniques<br>
+
+Front : <br>
+Rédacrion du Dockerfile multi-stage pour builder l'application React avec Node.js puis servir les fichiers statiques avec Nginx. <br>
+Apres quelques essais, le dockerfile a été amelioré afin qu'il soit fonctionnel et optimisé grace a la separation des phases build et runtime, avec la partie node et la partie nginx. <br>
 
 
 ## 5. Choix techniques & raisons
 
-Uniquement côté Docker du backend :
+Docker du backend :
 
 - Multi-stage Dockerfile: utilisation de `maven:3.9.9-eclipse-temurin-23-alpine` pour builder puis `eclipse-temurin:23-jre-alpine` pour exécuter. Réduit la taille finale et sépare build/runtime pour plus de sécurité.
 - Caching Maven: copie de `pom.xml` avant `src/` afin de réutiliser le cache des dépendances entre builds quand le code change peu.
@@ -77,7 +88,12 @@ Uniquement côté Docker du backend :
 - Orchestration Compose: service `api` dépend de `db` (`depends_on`), port publié configurable via `HOST_PORT`, et `restart: unless-stopped` pour la résilience locale.
 - Tag d'image explicite `backend:1.0`: facilite l'identification et le versionnement local.
 
-
+Docker du frontend :
+- Multi-stage Dockerfile: utilise `node:18-alpine` pour générer l'image de build, puis `nginx:alpine` pour builder l'image finale. Réduit la taille et sépare build/runtime.
+- Lancement simple: `CMD ["nginx", "-g", "daemon off;"]` pour build l'image avec Nginx.
+- Variables d'environnement Vite: `VITE_API_BASE_URL` permet de configurer l'URL de l'API au runtime.
+- Configuration Nginx: fichier `nginx.conf` personnalisé pour gérer le routage des requêtes vers l'API ou les fichiers statiques.
+- Tag d'image explicite `frontend:1.0`: facilite l'identification et le versionnement local.
 
 ## 6. Variables d'environnement principales (`spring-api/.env`)
 
