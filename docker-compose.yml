@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -17,18 +17,21 @@ services:
     depends_on:
       - db
     environment:
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
     restart: unless-stopped
     networks:
       - app-net
 
   webapp:
-    build: ./webapp
+    build:
+      context: ./webapp
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
     image: frontend:1.0
     environment:
-      - VITE_API_BASE_URL=http://localhost
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL}
     networks:
       - app-net
 
