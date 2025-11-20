@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   api:
-    build: .
+    build: ./spring-api
     image: backend:1.0
     depends_on:
       - db
