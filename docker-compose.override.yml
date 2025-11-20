@@ -1,0 +1,21 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+  api:
+    ports:
+      - "8080:8080"
+
+  webapp:
+    build:
+      context: ./webapp
+      args:
+        VITE_API_BASE_URL: .
+    environment:
+      - VITE_API_BASE_URL=.
+    
+
+  proxy:
+    ports:
+      - "80:80"
+      - "5173:80"
