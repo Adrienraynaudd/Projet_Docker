@@ -90,16 +90,12 @@ curl -X POST http://localhost:5173/api/items -H "Content-Type: application/json"
 	- Apres quelques essais, le dockerfile a été amelioré afin qu'il soit fonctionnel et optimisé grace a la separation des phases build et runtime, avec la partie node et la partie nginx.
 ## 5. Choix techniques effectués
 
-- Reverse proxy Nginx devant le front et l’API: une seule origine côté navigateur; pas de CORS; URLs simples (`/` et `/api`).
-- Front servi statiquement par Nginx (build Vite) pour des déploiements simples et rapides.
-- `VITE_API_BASE_URL='.'` au build: évite le couplage à des URLs absolues; compatible dev/prod sans changer le code.
-- Healthchecks:
-	- `api` a un healthcheck sur `/api/health` avec `start_period` pour laisser démarrer Spring.
-	- `proxy` et `webapp` ont un healthcheck simple. Non obligatoire, mais pratique pour `depends_on: condition: service_healthy`.
-- Compose override pour le “mode dev”:
-	- Publie `5173:80` (en plus de `80:80`) et `5432:5432`.
-	- N’ouvre pas la DB en prod-like (sécurité).
-- Images taguées `backend:1.0` et `frontend:1.0` pour lisibilité locale.
+- Docker Compose (réseau `app-net`): orchestre localement les services (`db`, `api`, `webapp`, `proxy`), isole chaque service, fournit un DNS interne par nom de service et un routage privé fiable.
+- Volume `pgdata`: persiste les données Postgres entre redémarrages, autorise la recréation des conteneurs sans perte d’état et facilite les sauvegardes locales.
+- Séparation dev/prod via `docker-compose.override.yml`: en dev, expose des ports pratiques (p. ex. `5173`, `5432`) pour travailler depuis l’hôte; en prod-like, limite l’exposition au strict nécessaire (`80:80`).
+- Healthchecks Compose: vérifient l’état réel des services, permettent un démarrage ordonné via `depends_on: condition: service_healthy` et rendent `up`/`restart` plus robustes.
+- Images taguées localement (`backend:1.0`, `frontend:1.0`): versions explicites, rollback simplifié et builds/pulls maîtrisés.
+- Configuration Nginx: `proxy_pass` vers `api:8080` sur le réseau interne, propagation des en-têtes `X-Forwarded-*`, service des fichiers statiques et possibilité d’activer gzip/cache pour de meilleures performances.
 
 ## 6. Variables d’environnement principales
 
